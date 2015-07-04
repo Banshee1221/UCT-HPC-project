@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
 	float x_min = 0, x_max = 1, y_min = 0, y_max = 1;
 	int count = 0;
 	
-	float test, current_x, current_y;
+	float current_x, current_y;
 
 	cout << "start" << endl;
 	cout << "create bins array" << endl;
@@ -59,51 +59,35 @@ int main(int argc, char* argv[]) {
 	int counter_x = 0, counter_y = 0;
 	high_resolution_clock::time_point loop_t1 = high_resolution_clock::now();
 	do {
-		input_file.read(reinterpret_cast<char*>(&test), sizeof(float));
-		if (count % 2 != 0){
-			//cout << " y: " << test << endl;
-			//out_file << "," << test << endl;//cout << " y: " << test << endl;
-			current_y = test;
+		input_file.read(reinterpret_cast<char*>(&current_x), sizeof(float));
+		input_file.read(reinterpret_cast<char*>(&current_y), sizeof(float));		
+		for (int i = 0; i < x_in; ++i){
+			if (i == 0){
+				if (current_x <= bins[i]){
+					counter_x = 0;
+				}
+			}
+			else{
+				if (current_x <= bins[i] && current_x > bins[i-1]){
+					counter_x = i;
+				}
+			}
+		}
+
+		for (int i = 0; i < y_in; ++i){
+			if (i == 0){
+				if (current_y <= bins[i]){
+					counter_y = 0;
+				}
+			}
+			else{
+				if (current_y <= bins[i] && current_y > bins[i - 1]){
+					counter_y = i;
+				}
+			}
 			
-			//---
-			for (int i = 0; i < x_in; ++i){
-				if (i == 0){
-					if (current_x <= bins[i]){
-						counter_x = 0;
-					}
-				}
-				else{
-					if (current_x <= bins[i] && current_x > bins[i-1]){
-						counter_x = i;
-					}
-				}
-			}
-
-			for (int i = 0; i < y_in; ++i){
-				if (i == 0){
-					if (current_y <= bins[i]){
-						counter_y = 0;
-					}
-				}
-				else{
-					if (current_y <= bins[i] && current_y > bins[i - 1]){
-						counter_y = i;
-					}
-				}
-			}
-
-			array_points[counter_x][counter_y] = array_points[counter_x][counter_y]++;
-			//cout << array_points[counter_x][counter_y] << endl;
-			//---
-
 		}
-		else{
-			//out_file << test;
-			//cout << "x: " << test;
-			//cout << "x: " << point[0] << " y: " << point[1] << " pos: " << input_file.tellg() << " eof: " << input_file.eof() << endl*/
-			current_x = test;
-		}
-		count++;
+		array_points[counter_x][counter_y]++;
 	} while (!input_file.eof());
 	high_resolution_clock::time_point loop_t2 = high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(loop_t2 - loop_t1).count();
