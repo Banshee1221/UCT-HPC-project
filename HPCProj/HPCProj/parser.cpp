@@ -3,20 +3,24 @@
 #include <fstream>
 #include <math.h>
 #include <vector>
+#include <algorithm>
 #include <chrono>
+#include "writer.h"
+#include "med_filter.h"
+
 using namespace std;
 using namespace std::chrono;
 
+
 int main(int argc, char* argv[]) {
 
-	int x_in = atoi(argv[1]); 
-	int y_in = atoi(argv[2]);
+	string in_file_name = argv[1];
+	int x_in = atoi(argv[2]); 
+	int y_in = x_in;
 	cout << "Input - x: " << x_in << " y: " << y_in << endl;
 
 	ifstream input_file;
-	ofstream out_file;
-	input_file.open("Points_[1.0e+08]_Noise_[030]_Normal.bin", ios::binary);
-	out_file.open("data.csv");
+	input_file.open(in_file_name, ios::binary);
 	
 	float x_min = 0, x_max = 1, y_min = 0, y_max = 1;
 	int count = 0;
@@ -25,7 +29,8 @@ int main(int argc, char* argv[]) {
 
 	cout << "start" << endl;
 	cout << "create bins array" << endl;
-	float* bins = new float[x_in];
+	vector<float> bins;
+	bins.resize(x_in);
 	for (int i = 0; i < x_in; i++){
 		bins[i] = ((float)(i + 1) / (float)x_in);
 	}
@@ -36,7 +41,7 @@ int main(int argc, char* argv[]) {
 
 	cout << "create 2d" << endl;
 	//---
-	vector<vector<int>> array_points;
+	vector<vector<unsigned int>> array_points;
 	array_points.resize(x_in);
 	for (int i = 0; i < x_in; ++i){
 		array_points[i].resize(y_in);
@@ -93,45 +98,31 @@ int main(int argc, char* argv[]) {
 	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(loop_t2 - loop_t1).count();
 	cout << "Loop time: " << duration/(float)1000000 << endl; 
 	cout << "Here" << endl;
+	
 	//Formatting
-	out_file << "\t,";
-	for (int i = 0; i < x_in; ++i){
-		cout << "bins i: " << i << endl;
-		if (i != (x_in - 1)){
-			if (i == 0)
-				out_file << bins[i] / (float)2 << ",";
-			else
-				out_file << (bins[i - 1] + bins[i]) / (float)2 << ",";
-		}
-		else
-			out_file << (bins[i - 1] + bins[i]) / (float)2;
-	}
-	out_file << endl;
-	cout << "Writing 2d array" << endl;
-	 for (int i = 0; i < x_in; ++i){
-		 if (i == 0)
-			 out_file << bins[i] / (float)2 << ",";
-		 else
-			 out_file << (bins[i - 1] + bins[i]) / (float)2 << ",";
-		for (int j = 0; j < y_in; ++j){
-			if (j != (y_in - 1))
-				out_file << array_points[j][i] << ",";
-			else
-				out_file << array_points[j][i];
-		}
-		out_file << endl;
+	printToFile(bins, array_points, x_in, y_in, "unfiltered.csv");
+
+
+	if (argc == 4){
+
+	
+
+		int x_res = atoi(argv[3]);
+		int y_res = x_res;
+
+		medianFilter(bins, x_res, array_points, x_in, y_in);
+		
+		return 0;
 	}
 
-	 cout << "closing file" << endl;
-	 out_file.close();
+
+	
+	
 
 	/*for (int i = 0; i < x_in; ++i)
 		for (int j = 0; j < y_in; ++j)
 			cout << "x: " << bins[i] << " | y: " << bins[j] << "\t" << array_points[i][j] << "\n";*/
 	
-	 cout << "deleting bins" << endl;
-	 delete[] bins;
-	 bins = NULL;
 
 	 /*cout << "deleting 2d arr points" << endl;
 	 for (int i = 0; i < x_in; i++){
@@ -146,4 +137,4 @@ int main(int argc, char* argv[]) {
 	//cout << "min_y: " << y_min << endl;
 	//cout << "max_y: " << y_max << endl;
 	 return 0;
-}
+};
