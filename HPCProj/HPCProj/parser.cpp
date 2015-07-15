@@ -1,140 +1,195 @@
 #include "stdafx.h"
 #include <iostream>
-#include <fstream>
-#include <math.h>
+#include <omp.h>
 #include <vector>
-#include <algorithm>
-#include <chrono>
 #include "writer.h"
 #include "med_filter.h"
 
-using namespace std;
-using namespace std::chrono;
+#define CPU_THREADS 8
+#define READ_BUFFER 10000000
+//#define BLOCK
+//#define PARALLEL
+#define SERIAL
 
+using namespace std;
 
 int main(int argc, char* argv[]) {
 
+	// Set OMP threads
+	omp_set_num_threads(CPU_THREADS);
+#ifdef PARALLEL
+	cout << "=== RUNNING IN PARALLEL MODE ===\n" << endl;
+#endif
+	// Get input from command line arguments
 	string in_file_name = argv[1];
-	int x_in = atoi(argv[2]); 
+	int x_in = atoi(argv[2]);
 	int y_in = x_in;
-	cout << "Input - x: " << x_in << " y: " << y_in << endl;
+	cout << "Input - x:\t\t\t" << x_in << endl << "Input - y:\t\t\t" << y_in << endl;
 
+	// Open file for reading
 	ifstream input_file;
-	input_file.open(in_file_name, ios::binary);
-	
-	float x_min = 0, x_max = 1, y_min = 0, y_max = 1;
-	int count = 0;
-	
-	float current_x, current_y;
+	input_file.open(in_file_name, ios::binary | ios::in | ios::ate);
+	int length = input_file.tellg();
+	cout << "Length of data:\t\t\t" << length << " Bytes" << endl << "Amount of floats:\t\t"
+		<< length / sizeof(float) << endl << "Buffer size:\t\t\t" << READ_BUFFER << " Bytes"
+		<< endl << "Threads specified:\t\t" << CPU_THREADS << endl << endl;
+	input_file.seekg(ios::beg);
 
-	cout << "start" << endl;
-	cout << "create bins array" << endl;
+	cout << "Start binning process\n=====================" << endl;
+
+	// Create bins array and populate
+	cout << "::Create bins array" << endl;
 	vector<float> bins;
 	bins.resize(x_in);
 	for (int i = 0; i < x_in; i++){
 		bins[i] = ((float)(i + 1) / (float)x_in);
 	}
-	cout << "bins array: " << endl;
-	for (int i = 0; i < x_in; i++){
-		cout << bins[i] << endl;
-	}
 
-	cout << "create 2d" << endl;
-	//---
+	// Create coordinate array and initialize
+	cout << "::Create points array" << endl;
 	vector<vector<unsigned int>> array_points;
 	array_points.resize(x_in);
 	for (int i = 0; i < x_in; ++i){
 		array_points[i].resize(y_in);
 	}
-	
-	//---
-	cout << "2d array fill " << endl;
 	for (int i = 0; i < x_in; i++){
 		for (int j = 0; j < y_in; j++)
 			array_points[i][j] = 0;
-			//cout << "x: " << bins[i] << " | y: " << bins[j] << "\t" << array_points[i][j] << "\n";
 	}
 
-	/*cout << "2d array: " << endl;
+	// Set up temporary variables for parsing purposes
+	float current_x, current_y;
+	int counter_x = -1, counter_y = -1;
+	int count = 0;
+	vector<float> buffer;
+	buffer.resize(READ_BUFFER);
+
+#ifdef SERIAL
+	// Start timer for read + binning
+	cout << "\n==Enter serial loop== " << endl;
+	double startSerial = omp_get_wtime();
+	while (!input_file.eof() && !input_file.fail()){
+
+		if (!(input_file.read(reinterpret_cast<char*>(&buffer[0]), READ_BUFFER*sizeof(float)))){
+			break;
+		}
+
+		for (int i = 0; i < (buffer.size() - 1); i += 2){
+
+			current_x = buffer[i];
+			current_y = buffer[i + 1];
+
+			for (int a = 0; a < x_in; ++a){
+				if (a == 0){
+					if (current_x <= bins[0]){
+						counter_x = 0;
+					}
+					if (current_y <= bins[0]){
+						counter_y = 0;
+					}
+				}
+				else{
+					if (current_x <= bins[a] && current_x > bins[a - 1]){
+						counter_x = a;
+					}
+					if (current_y <= bins[a] && current_y > bins[a - 1]){
+						counter_y = a;
+					}
+				}
+			}
+			array_points[counter_x][counter_y]++;
+			count++;
+		}
+	}
+	double endSerial = omp_get_wtime();
+
+	cout << "::Coordinates processed:\t" << count << endl;
+	cout << "::Loop time serial:\t\t" << (endSerial - startSerial) << endl;
+	cout << "\n=>Writing serial data to file" << endl;
+	printToFile(bins, array_points, x_in, y_in, "unfiltered_serial.csv");
+#endif
+
+#ifdef PARALLEL
+
+	count = 0;
+
+	buffer.clear();
+	buffer.resize(READ_BUFFER);
+
+	array_points.clear();
+	array_points.resize(x_in);
+	for (int i = 0; i < x_in; ++i){
+		array_points[i].resize(y_in);
+	}
 	for (int i = 0; i < x_in; i++){
 		for (int j = 0; j < y_in; j++)
-		cout << "x: " << bins[i] << " | y: " << bins[j] << "\t" << array_points[i][j] << "\n";
-	}*/
+			array_points[i][j] = 0;
+	}
 
-	int counter_x = 0, counter_y = 0;
-	high_resolution_clock::time_point loop_t1 = high_resolution_clock::now();
-	do {
-		input_file.read(reinterpret_cast<char*>(&current_x), sizeof(float));
-		input_file.read(reinterpret_cast<char*>(&current_y), sizeof(float));		
-		for (int i = 0; i < x_in; ++i){
-			if (i == 0){
-				if (current_x <= bins[i]){
-					counter_x = 0;
+
+	input_file.close();
+	input_file.open(in_file_name, ios::binary | ios::in);
+
+	counter_x = -1, counter_y = -1;
+	count = 0;
+	int a;
+	cout << "\n==Entering OMP loop==" << endl;
+	double startParallel = omp_get_wtime();
+
+	while (!input_file.eof() && !input_file.fail()){
+		counter_x = -1, counter_y = -1;
+		if (!(input_file.read(reinterpret_cast<char*>(&buffer[0]), READ_BUFFER*sizeof(float)))){
+			break;
+		}
+#pragma omp parallel for private(current_x, current_y, counter_x, counter_y)
+			for (int i = 0; i < (buffer.size() - 1); i += 2){
+
+				current_x = buffer[i];
+				current_y = buffer[i + 1];
+
+				for (a = 0; a < x_in; ++a){
+					if (a == 0){
+						if (current_x <= bins[a]){
+							counter_x = 0;
+						}
+						if (current_y <= bins[a]){
+							counter_y = 0;
+						}
+					}
+					else{
+						if (current_x <= bins[a] && current_x > bins[a - 1]){
+							counter_x = a;
+						}
+						if (current_y <= bins[a] && current_y > bins[a - 1]){
+							counter_y = a;
+						}
+					}
 				}
-			}
-			else{
-				if (current_x <= bins[i] && current_x > bins[i-1]){
-					counter_x = i;
-				}
+#pragma omp atomic
+				array_points[counter_x][counter_y]++;
+#pragma omp atomic
+				count++;
 			}
 		}
 
-		for (int i = 0; i < y_in; ++i){
-			if (i == 0){
-				if (current_y <= bins[i]){
-					counter_y = 0;
-				}
-			}
-			else{
-				if (current_y <= bins[i] && current_y > bins[i - 1]){
-					counter_y = i;
-				}
-			}
-			
-		}
-		array_points[counter_x][counter_y]++;
-	} while (!input_file.eof());
-	high_resolution_clock::time_point loop_t2 = high_resolution_clock::now();
-	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(loop_t2 - loop_t1).count();
-	cout << "Loop time: " << duration/(float)1000000 << endl; 
-	cout << "Here" << endl;
-	
-	//Formatting
-	printToFile(bins, array_points, x_in, y_in, "unfiltered.csv");
+	double endParallel = omp_get_wtime();
 
+	cout << "::Coordinates processed:\t" << count << endl;
+	cout << "::Loop time parallel:\t\t" << (endParallel - startParallel) << endl;
+	cout << "\n=>Writing serial data to file" << endl;
+	printToFile(bins, array_points, x_in, y_in, "unfiltered_parallel.csv");
+#endif
 
 	if (argc == 4){
-
-	
 
 		int x_res = atoi(argv[3]);
 		int y_res = x_res;
 
+		cout << "\nStarting median filter process\n==============================\n";
 		medianFilter(bins, x_res, array_points, x_in, y_in);
 		
 		return 0;
 	}
 
-
-	
-	
-
-	/*for (int i = 0; i < x_in; ++i)
-		for (int j = 0; j < y_in; ++j)
-			cout << "x: " << bins[i] << " | y: " << bins[j] << "\t" << array_points[i][j] << "\n";*/
-	
-
-	 /*cout << "deleting 2d arr points" << endl;
-	 for (int i = 0; i < x_in; i++){
-		 delete[] array_points[i];
-	 }
-	 cout << "deleting 2d arr" << endl;
-	 delete[] array_points;*/
-
-	//cout << "count: " << (count - 1)/2 << endl;
-	//cout << "min_x: " << x_min << endl;
-	//cout << "max_x: " << x_max << endl;
-	//cout << "min_y: " << y_min << endl;
-	//cout << "max_y: " << y_max << endl;
 	 return 0;
 };

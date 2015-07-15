@@ -2,13 +2,13 @@
 #include "writer.h"
 
 void printToFile(vector<float> bins, vector<vector<unsigned int>> counted_array, int square_width, int square_height, string output_file_name){
+	cout << "Open output file" << endl;
 	ofstream outFile;
 	outFile.open(output_file_name);
 
 	outFile << "\t,";
 
 	for (int i = 0; i < square_width; ++i){
-		cout << "bins i: " << i << endl;
 		if (i != (square_width - 1)){
 			if (i == 0)
 				outFile << bins[i] / (float)2 << ",";
@@ -21,7 +21,7 @@ void printToFile(vector<float> bins, vector<vector<unsigned int>> counted_array,
 
 	outFile << endl;
 
-	cout << "Writing 2d array" << endl;
+	cout << "Writing 2D array" << endl;
 
 	for (int i = 0; i < square_width; ++i){
 		if (i == 0)
@@ -37,6 +37,6 @@ void printToFile(vector<float> bins, vector<vector<unsigned int>> counted_array,
 		outFile << endl;
 	}
 
-	cout << "closing file" << endl;
+	cout << "Closing file" << endl;
 	outFile.close();
 };
