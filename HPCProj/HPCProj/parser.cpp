@@ -8,8 +8,8 @@
 #define CPU_THREADS 8
 #define READ_BUFFER 10000000
 //#define BLOCK
-//#define PARALLEL
-#define SERIAL
+#define PARALLEL
+//#define SERIAL
 
 using namespace std;
 

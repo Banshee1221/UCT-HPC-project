@@ -3,21 +3,49 @@
 #include <omp.h>
 
 vector<vector<unsigned int>> array_padder(int original_size, int window_size, vector<vector<unsigned  int>> original_array){
+	int pad_val = (window_size - 1) / 2;
 	vector<vector<unsigned int>> padded_array;
 	padded_array.resize(original_size + window_size - 1);
 
-	for (int i = 0; i < padded_array.size(); ++i){
+	int padded_size = padded_array.size();
+
+	for (int i = 0; i < padded_size; ++i){
 		padded_array[i].resize(original_size + window_size - 1);
 	}
 	//cout << "got here" << endl;
-	for (int i = (window_size - 1) / 2; i < padded_array.size() - (window_size - 1) / 2; ++i){
-		for (int j = (window_size - 1) / 2; j < padded_array.size() - (window_size - 1) / 2; ++j){
-			padded_array[i][j] = original_array[i - (window_size - 1) / 2][j - (window_size - 1) / 2];	
+	for (int i = pad_val; i < padded_size - pad_val; ++i){
+		for (int j = pad_val; j < padded_size - pad_val; ++j){
+			padded_array[i][j] = original_array[i - pad_val][j - pad_val];	
 		}
 	}
 
-	for (int i = 0; i < padded_array.size(); i++){
-		for (int j = 0; j < padded_array.size(); j++){
+	//Symmetry
+	for (int x = pad_val; x < pad_val + original_size; ++x){
+		int count = 0;
+		for (int top = pad_val - 1; top >= 0; --top){
+			padded_array[top][x] = original_array[count][x - pad_val];
+			padded_array[x][top] = original_array[x - pad_val][count];
+			count++;
+		}
+	}
+
+	for (int y = original_size - 1; y >= 0; --y){
+		for (int space = 0; space < pad_val; space++){
+			padded_array[y + pad_val][padded_size - pad_val + space] = original_array[y][original_size - 1 - space];
+		}
+	}
+
+	int tmpVal = original_size - 1;
+	for (int y = original_size + pad_val; y < padded_size; ++y){
+		for (int x = 0 + pad_val; x < original_size + pad_val; ++x){
+			padded_array[y][x] = original_array[tmpVal][x - pad_val];
+		}
+		tmpVal--;
+	}
+	//EndSymmetry
+
+	/*for (int i = 0; i < padded_size; i++){
+		for (int j = 0; j < padded_size; j++){
 			if (padded_array[i][j] == 0){
 				cout << padded_array[i][j] << "\t";
 			}
@@ -25,7 +53,7 @@ vector<vector<unsigned int>> array_padder(int original_size, int window_size, ve
 				cout << padded_array[i][j] << "\t";
 		}
 		cout << endl;
-	}
+	}*/
 
 	return padded_array;
 }
