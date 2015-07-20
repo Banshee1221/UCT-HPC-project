@@ -7,6 +7,6 @@
 
 using namespace std;
 
-void printToFile(vector<float> bins, vector<vector<unsigned int>> counted_array, int square_width, int square_height, string output_file_name);
+int printToFile(vector<float> bins, unsigned int* counted_array, int square_width, int square_height, string output_file_name);
 
 #endif

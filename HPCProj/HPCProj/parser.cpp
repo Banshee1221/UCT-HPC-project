@@ -2,10 +2,11 @@
 #include <iostream>
 #include <omp.h>
 #include <vector>
+#include <cstdio>
 #include "writer.h"
 #include "med_filter.h"
 
-#define CPU_THREADS 8
+#define CPU_THREADS 7
 #define READ_BUFFER 10000000
 //#define BLOCK
 #define PARALLEL
@@ -17,13 +18,35 @@ int main(int argc, char* argv[]) {
 
 	// Set OMP threads
 	omp_set_num_threads(CPU_THREADS);
+
+	// Get input from command line arguments
+	int x_res = atoi(argv[3]);
+	int y_res = x_res;
+	if (argc == 4){
+		if (x_res < 3 || x_res > 21 || x_res % 2 == 0){
+			cout << "Incorrect filter size!\nSize must be between 3 and 21.\n";
+			return 0;
+		}
+	}
+
 #ifdef PARALLEL
 	cout << "=== RUNNING IN PARALLEL MODE ===\n" << endl;
 #endif
-	// Get input from command line arguments
+
 	string in_file_name = argv[1];
 	int x_in = atoi(argv[2]);
 	int y_in = x_in;
+
+	if (x_in < 5 || x_in > 4096){
+		cout << "Incorrect bin size!\nSize must be between 5 and 4096.\n";
+		return 0;
+	}
+	if (x_res >= x_in){
+		cout << "Incorrect filter size!\nSize must be smaller than the bin size.\n";
+		return 0;
+	}
+
+	const int gridSize = x_in * y_in;
 	cout << "Input - x:\t\t\t" << x_in << endl << "Input - y:\t\t\t" << y_in << endl;
 
 	// Open file for reading
@@ -47,7 +70,7 @@ int main(int argc, char* argv[]) {
 
 	// Create coordinate array and initialize
 	cout << "::Create points array" << endl;
-	vector<vector<unsigned int>> array_points;
+	/*vector<vector<unsigned int>> array_points;
 	array_points.resize(x_in);
 	for (int i = 0; i < x_in; ++i){
 		array_points[i].resize(y_in);
@@ -55,7 +78,13 @@ int main(int argc, char* argv[]) {
 	for (int i = 0; i < x_in; i++){
 		for (int j = 0; j < y_in; j++)
 			array_points[i][j] = 0;
-	}
+	}*/
+
+	unsigned int *array_points;
+	array_points = new (nothrow) unsigned int[gridSize]();
+	
+	/*for (int n = 0; n<gridSize; n++)
+		cout << array_points[n] << ", ";*/
 
 	// Set up temporary variables for parsing purposes
 	float current_x, current_y;
@@ -81,23 +110,23 @@ int main(int argc, char* argv[]) {
 
 			for (int a = 0; a < x_in; ++a){
 				if (a == 0){
-					if (current_x <= bins[0]){
+					if (current_x < bins[0]){
 						counter_x = 0;
 					}
-					if (current_y <= bins[0]){
+					if (current_y < bins[0]){
 						counter_y = 0;
 					}
 				}
 				else{
-					if (current_x <= bins[a] && current_x > bins[a - 1]){
+					if (current_x < bins[a] && current_x >= bins[a - 1]){
 						counter_x = a;
 					}
-					if (current_y <= bins[a] && current_y > bins[a - 1]){
+					if (current_y < bins[a] && current_y >= bins[a - 1]){
 						counter_y = a;
 					}
 				}
 			}
-			array_points[counter_x][counter_y]++;
+			array_points[counter_y*y_in + counter_x]++;
 			count++;
 		}
 	}
@@ -106,7 +135,15 @@ int main(int argc, char* argv[]) {
 	cout << "::Coordinates processed:\t" << count << endl;
 	cout << "::Loop time serial:\t\t" << (endSerial - startSerial) << endl;
 	cout << "\n=>Writing serial data to file" << endl;
+
+	/*for (int n = 0; n < x_in; n++){
+		for (int m = 0; m < y_in; m++){
+			cout << array_points[x_in*n+m] << ", ";
+		}
+		cout << endl;
+	}*/
 	printToFile(bins, array_points, x_in, y_in, "unfiltered_serial.csv");
+
 #endif
 
 #ifdef PARALLEL
@@ -116,19 +153,11 @@ int main(int argc, char* argv[]) {
 	buffer.clear();
 	buffer.resize(READ_BUFFER);
 
-	array_points.clear();
-	array_points.resize(x_in);
-	for (int i = 0; i < x_in; ++i){
-		array_points[i].resize(y_in);
-	}
-	for (int i = 0; i < x_in; i++){
-		for (int j = 0; j < y_in; j++)
-			array_points[i][j] = 0;
-	}
-
-
 	input_file.close();
 	input_file.open(in_file_name, ios::binary | ios::in);
+
+	for (int n = 0; n < gridSize; n++)
+		array_points[n] = 0;
 
 	counter_x = -1, counter_y = -1;
 	count = 0;
@@ -149,24 +178,24 @@ int main(int argc, char* argv[]) {
 
 				for (a = 0; a < x_in; ++a){
 					if (a == 0){
-						if (current_x <= bins[a]){
+						if (current_x < bins[a]){
 							counter_x = 0;
 						}
-						if (current_y <= bins[a]){
+						if (current_y < bins[a]){
 							counter_y = 0;
 						}
 					}
 					else{
-						if (current_x <= bins[a] && current_x > bins[a - 1]){
+						if (current_x < bins[a] && current_x >= bins[a - 1]){
 							counter_x = a;
 						}
-						if (current_y <= bins[a] && current_y > bins[a - 1]){
+						if (current_y < bins[a] && current_y >= bins[a - 1]){
 							counter_y = a;
 						}
 					}
 				}
 #pragma omp atomic
-				array_points[counter_x][counter_y]++;
+				array_points[counter_y*y_in + counter_x]++;
 #pragma omp atomic
 				count++;
 			}
@@ -176,20 +205,22 @@ int main(int argc, char* argv[]) {
 
 	cout << "::Coordinates processed:\t" << count << endl;
 	cout << "::Loop time parallel:\t\t" << (endParallel - startParallel) << endl;
-	cout << "\n=>Writing serial data to file" << endl;
+	cout << "\n=>Writing parallel data to file" << endl;
 	printToFile(bins, array_points, x_in, y_in, "unfiltered_parallel.csv");
 #endif
 
 	if (argc == 4){
 
-		int x_res = atoi(argv[3]);
-		int y_res = x_res;
-
 		cout << "\nStarting median filter process\n==============================\n";
+#ifdef SERIAL	
 		medianFilter(bins, x_res, array_points, x_in, y_in);
+#endif
 		
-		return 0;
+#ifdef PARALLEL
+		medianFilter_CUDA(bins, x_res, array_points, x_in, y_in);
+#endif
 	}
 
-	 return 0;
+	delete[] array_points;
+	return 0;
 };

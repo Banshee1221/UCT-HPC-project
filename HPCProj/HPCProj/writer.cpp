@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include "writer.h"
 
-void printToFile(vector<float> bins, vector<vector<unsigned int>> counted_array, int square_width, int square_height, string output_file_name){
+int printToFile(vector<float> bins, unsigned int* counted_array, int square_width, int square_height, string output_file_name){
 	cout << "Open output file" << endl;
 	ofstream outFile;
 	outFile.open(output_file_name);
@@ -30,13 +30,15 @@ void printToFile(vector<float> bins, vector<vector<unsigned int>> counted_array,
 			outFile << (bins[i - 1] + bins[i]) / (float)2 << ",";
 		for (int j = 0; j < square_height; ++j){
 			if (j != (square_height - 1))
-				outFile << counted_array[j][i] << ",";
+				outFile << counted_array[square_width*i+j] << ",";
 			else
-				outFile << counted_array[j][i];
+				outFile << counted_array[square_width*i + j];
 		}
 		outFile << endl;
 	}
 
 	cout << "Closing file" << endl;
 	outFile.close();
+
+	return 0;
 };
