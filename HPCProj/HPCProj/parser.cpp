@@ -6,9 +6,8 @@
 #include "writer.h"
 #include "med_filter.h"
 
-#define CPU_THREADS 7
+#define THREADS 7
 #define READ_BUFFER 10000000
-//#define BLOCK
 #define PARALLEL
 //#define SERIAL
 
@@ -17,7 +16,7 @@ using namespace std;
 int main(int argc, char* argv[]) {
 
 	// Set OMP threads
-	omp_set_num_threads(CPU_THREADS);
+	omp_set_num_threads(THREADS);
 
 	// Get input from command line arguments
 	int x_res = atoi(argv[3]);
@@ -47,15 +46,21 @@ int main(int argc, char* argv[]) {
 	}
 
 	const int gridSize = x_in * y_in;
-	cout << "Input - x:\t\t\t" << x_in << endl << "Input - y:\t\t\t" << y_in << endl;
+	cout << "Binning size:\t\t\t" << x_in << " x " << y_in << endl;
+	if (argc == 4){
+		cout << "Filter Window:\t\t\t" << x_res << " x " << y_res << endl;
+	}
 
 	// Open file for reading
 	ifstream input_file;
 	input_file.open(in_file_name, ios::binary | ios::in | ios::ate);
-	int length = input_file.tellg();
-	cout << "Length of data:\t\t\t" << length << " Bytes" << endl << "Amount of floats:\t\t"
-		<< length / sizeof(float) << endl << "Buffer size:\t\t\t" << READ_BUFFER << " Bytes"
-		<< endl << "Threads specified:\t\t" << CPU_THREADS << endl << endl;
+	unsigned __int64 length = input_file.tellg();
+	cout << "Input File Name:\t\t" << argv[1] << endl << "Buffer size:\t\t\t" << READ_BUFFER << " Bytes"
+		<< endl;
+#ifdef PARALLEL
+	cout << "Threads specified:\t\t" << THREADS << endl;
+#endif
+	cout << endl;
 	input_file.seekg(ios::beg);
 
 	cout << "Start binning process\n=====================" << endl;
@@ -70,21 +75,9 @@ int main(int argc, char* argv[]) {
 
 	// Create coordinate array and initialize
 	cout << "::Create points array" << endl;
-	/*vector<vector<unsigned int>> array_points;
-	array_points.resize(x_in);
-	for (int i = 0; i < x_in; ++i){
-		array_points[i].resize(y_in);
-	}
-	for (int i = 0; i < x_in; i++){
-		for (int j = 0; j < y_in; j++)
-			array_points[i][j] = 0;
-	}*/
 
-	unsigned int *array_points;
-	array_points = new (nothrow) unsigned int[gridSize]();
-	
-	/*for (int n = 0; n<gridSize; n++)
-		cout << array_points[n] << ", ";*/
+	unsigned __int64 *array_points;
+	array_points = new (nothrow) unsigned __int64[gridSize]();
 
 	// Set up temporary variables for parsing purposes
 	float current_x, current_y;
@@ -92,17 +85,18 @@ int main(int argc, char* argv[]) {
 	int count = 0;
 	vector<float> buffer;
 	buffer.resize(READ_BUFFER);
+	double start = 0;
+	double end = 0;
 
 #ifdef SERIAL
-	// Start timer for read + binning
 	cout << "\n==Enter serial loop== " << endl;
-	double startSerial = omp_get_wtime();
+	
 	while (!input_file.eof() && !input_file.fail()){
 
 		if (!(input_file.read(reinterpret_cast<char*>(&buffer[0]), READ_BUFFER*sizeof(float)))){
 			break;
 		}
-
+		start = omp_get_wtime();
 		for (int i = 0; i < (buffer.size() - 1); i += 2){
 
 			current_x = buffer[i];
@@ -129,19 +123,14 @@ int main(int argc, char* argv[]) {
 			array_points[counter_y*y_in + counter_x]++;
 			count++;
 		}
+		end += (omp_get_wtime() - start);
+
 	}
-	double endSerial = omp_get_wtime();
 
 	cout << "::Coordinates processed:\t" << count << endl;
-	cout << "::Loop time serial:\t\t" << (endSerial - startSerial) << endl;
+	cout << "::Loop time serial:\t\t" << end << endl;
 	cout << "\n=>Writing serial data to file" << endl;
 
-	/*for (int n = 0; n < x_in; n++){
-		for (int m = 0; m < y_in; m++){
-			cout << array_points[x_in*n+m] << ", ";
-		}
-		cout << endl;
-	}*/
 	printToFile(bins, array_points, x_in, y_in, "unfiltered_serial.csv");
 
 #endif
@@ -161,22 +150,23 @@ int main(int argc, char* argv[]) {
 
 	counter_x = -1, counter_y = -1;
 	count = 0;
-	int a;
 	cout << "\n==Entering OMP loop==" << endl;
-	double startParallel = omp_get_wtime();
+	start = 0;
+	end = 0;
 
 	while (!input_file.eof() && !input_file.fail()){
 		counter_x = -1, counter_y = -1;
 		if (!(input_file.read(reinterpret_cast<char*>(&buffer[0]), READ_BUFFER*sizeof(float)))){
 			break;
 		}
-#pragma omp parallel for private(current_x, current_y, counter_x, counter_y)
+		start = omp_get_wtime();
+#pragma omp parallel for private(counter_x, counter_y) schedule(static)
 			for (int i = 0; i < (buffer.size() - 1); i += 2){
 
 				current_x = buffer[i];
 				current_y = buffer[i + 1];
 
-				for (a = 0; a < x_in; ++a){
+				for (int a = 0; a < x_in; ++a){
 					if (a == 0){
 						if (current_x < bins[a]){
 							counter_x = 0;
@@ -199,12 +189,11 @@ int main(int argc, char* argv[]) {
 #pragma omp atomic
 				count++;
 			}
+			end += (omp_get_wtime() - start);
 		}
 
-	double endParallel = omp_get_wtime();
-
 	cout << "::Coordinates processed:\t" << count << endl;
-	cout << "::Loop time parallel:\t\t" << (endParallel - startParallel) << endl;
+	cout << "::Loop time parallel:\t\t" << end << endl;
 	cout << "\n=>Writing parallel data to file" << endl;
 	printToFile(bins, array_points, x_in, y_in, "unfiltered_parallel.csv");
 #endif
@@ -217,6 +206,8 @@ int main(int argc, char* argv[]) {
 #endif
 		
 #ifdef PARALLEL
+		medianFilter(bins, x_res, array_points, x_in, y_in);
+		printf("\n\nCUDA\n\n");
 		medianFilter_CUDA(bins, x_res, array_points, x_in, y_in);
 #endif
 	}
